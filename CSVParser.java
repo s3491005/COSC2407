@@ -21,7 +21,8 @@ public class CSVParser {
     
     private static Connection connection = null;
     private static Statement statement = null;
-    
+    private static Pattern pattern = Pattern.compile("\\'");
+
     private static void connect() {
         try {
             Class.forName(DRIVER);
@@ -40,7 +41,7 @@ public class CSVParser {
                 statement.close();
             }
             if (connection != null) {
-                DriverManager.getConnection(DB_URL + ";shutdown=true");
+                //DriverManager.getConnection(DB_URL + ";shutdown=true");
                 connection.close();
             }           
         } catch (SQLException e) {
@@ -53,6 +54,7 @@ public class CSVParser {
             statement = connection.createStatement();
             statement.execute("DELETE FROM " + BUSINESS_NAME_TABLE);
             statement.close();
+            System.out.println("All rows deleted from " + BUSINESS_NAME_TABLE);
         }
         catch (SQLException e) {
             System.out.println(e.getMessage());
@@ -67,58 +69,56 @@ public class CSVParser {
         return "'" + value + "'"; // wrap in single-quotes
     }
 
-    private static String reformatDate(String date) {
-        if (date == null || date.isEmpty() || date.length() != 10) {
-            return "";
+    private static String getDate(String date) {
+        if (date.isEmpty()) {
+            return "NULL";
         }
-        return date.substring(6) + "-" + date.substring(3,5) + "-" + date.substring(0,2);
+        return "'" + date.substring(6) + "-" + date.substring(3,5) + "-" + date.substring(0,2) + "'";
     }
 
     public static String getFirstChar(String str) {
-        if (str == null || str.isEmpty()) {
-            return null;
+        if (str.isEmpty()) {
+            return "NULL";
         }
         if (str == "NT") {
-            return "O";
+            return "'O'";
         }
-        return str.substring(0,1);
+        return "'" + str.substring(0,1) + "'";
     }
 
     public static String escapeSingleQuotes(String str) {
-        if (str == null || str.isEmpty() || !str.contains("'")) {
+        if (str.isEmpty() || !str.contains("'")) {
             return str;
         }
-        return Pattern.compile("\\'").matcher(str).replaceAll("''");
+        return pattern.matcher(str).replaceAll("''");
     }
 
     public static void insertBusinessName(int id, String name, String status, String regDate, String cancelDate, String renewDate, String stateNum, String state, String abn) {
+        StringBuilder sql = new StringBuilder(); 
         try {
-            StringBuilder sql = new StringBuilder(); 
-            sql.append("insert into ");
+            sql.append("INSERT INTO ");
             sql.append(BUSINESS_NAME_TABLE);
-            sql.append(" values (");
+            sql.append(" VALUES (");
 
             sql.append(id);
             sql.append(",");
             sql.append(getValue(escapeSingleQuotes(name)));
             sql.append(",");
-            sql.append(getValue(getFirstChar(status)));
+            sql.append(getFirstChar(status));
             sql.append(",");
-            sql.append(getValue(reformatDate(regDate)));
+            sql.append(getDate(regDate));
             sql.append(",");
-            sql.append(getValue(reformatDate(cancelDate)));
+            sql.append(getDate(cancelDate));
             sql.append(",");
-            sql.append(getValue(reformatDate(renewDate)));
+            sql.append(getDate(renewDate));
             sql.append(",");
             sql.append(getValue(stateNum));
             sql.append(",");
-            sql.append(getValue(getFirstChar(state)));
+            sql.append(getFirstChar(state));
             sql.append(",");
             sql.append(getValue(abn));
 
             sql.append(")");
-
-            System.out.println(sql.toString());
 
             statement = connection.createStatement();
             statement.execute(sql.toString());
@@ -126,6 +126,7 @@ public class CSVParser {
         }
         catch (SQLException e) {
             System.out.println(e.getMessage());
+            System.out.println(sql.toString());
             //e.printStackTrace();
         }
     }
@@ -134,7 +135,7 @@ public class CSVParser {
 
         String line = "";
         int row = -1;
-        final int MAX = 10;
+        final int MAX = 100000;
         String[] cols;
         String name;
         String status;
@@ -144,9 +145,11 @@ public class CSVParser {
         String stateNum;
         String state;
         String abn;
-
+        
         connect();
         deleteAllBusinessNames();
+
+        long startTime = System.currentTimeMillis();
 
         try (BufferedReader br = new BufferedReader(new FileReader(FILENAME))) {
 
@@ -157,17 +160,21 @@ public class CSVParser {
                 }
                 
                 cols = line.split(DELIMITER);
-
-                name       = (cols.length > 1) ? cols[1] : null;
-                status     = (cols.length > 2) ? cols[2] : null;
-                regDate    = (cols.length > 3) ? cols[3] : null;
-                cancelDate = (cols.length > 4) ? cols[4] : null;
-                renewDate  = (cols.length > 5) ? cols[5] : null;
-                stateNum   = (cols.length > 6) ? cols[6] : null;
-                state      = (cols.length > 7) ? cols[7] : null;
-                abn        = (cols.length > 8) ? cols[8] : null;
+                
+                name       = cols[1];
+                status     = cols[2];
+                regDate    = cols[3];
+                cancelDate = cols[4];
+                renewDate  = cols[5];
+                stateNum   = (cols.length > 6) ? cols[6] : "";
+                state      = (cols.length > 7) ? cols[7] : "";
+                abn        = (cols.length > 8) ? cols[8] : "";
 
                 insertBusinessName(row, name, status, regDate, cancelDate, renewDate, stateNum, state, abn);
+
+                if (row % 1000 == 0) {
+                    System.out.print("\r" + row + " rows inserted ...");
+                }
             }
 
         } catch (IOException e) {
@@ -175,6 +182,12 @@ public class CSVParser {
         }
 
         disconnect();
+
+        System.out.println("\nInserted " + row + " rows      ");
+
+        long endTime = System.currentTimeMillis();
+        long ms = endTime - startTime;
+        System.out.println("Completed in: " + (ms/60000) + "m " + ((ms%60000)/1000) + "s " + (ms%1000) + "ms");
     }
 
 }
