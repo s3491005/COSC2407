@@ -51,6 +51,7 @@ public class CSVParser {
 
     private static void deleteAllBusinessNames() {
         try {
+            System.out.println("Deleting all rows from " + BUSINESS_NAME_TABLE + "...");
             statement = connection.createStatement();
             statement.execute("DELETE FROM " + BUSINESS_NAME_TABLE);
             statement.close();
@@ -62,62 +63,82 @@ public class CSVParser {
         }
     }
 
-    public static String getValue(String value) {
-        if (value == null || value.isEmpty()) {
-            return "NULL";
-        }
-        return "'" + value + "'"; // wrap in single-quotes
-    }
-
-    private static String getDate(String date) {
-        if (date.isEmpty()) {
-            return "NULL";
-        }
-        return "'" + date.substring(6) + "-" + date.substring(3,5) + "-" + date.substring(0,2) + "'";
-    }
-
-    public static String getFirstChar(String str) {
-        if (str.isEmpty()) {
-            return "NULL";
-        }
-        if (str == "NT") {
-            return "'O'";
-        }
-        return "'" + str.substring(0,1) + "'";
-    }
-
-    public static String escapeSingleQuotes(String str) {
-        if (str.isEmpty() || !str.contains("'")) {
-            return str;
-        }
-        return pattern.matcher(str).replaceAll("''");
-    }
-
     public static void insertBusinessName(int id, String name, String status, String regDate, String cancelDate, String renewDate, String stateNum, String state, String abn) {
         StringBuilder sql = new StringBuilder(); 
+
         try {
             sql.append("INSERT INTO ");
             sql.append(BUSINESS_NAME_TABLE);
             sql.append(" VALUES (");
 
             sql.append(id);
+            sql.append(",'");
+            sql.append(pattern.matcher(name).replaceAll("''")); // NAME
+            sql.append("','");
+            sql.append(status.charAt(0)); // STATUS, never null
+            sql.append("',");
+            if (regDate.isEmpty()) {
+                sql.append("NULL");
+            } else {
+                sql.append("'");
+                sql.append(regDate.substring(6)); // REG_DT
+                sql.append("-");
+                sql.append(regDate.substring(3,5));
+                sql.append("-");
+                sql.append(regDate.substring(0,2));
+                sql.append("'");
+            }
             sql.append(",");
-            sql.append(getValue(escapeSingleQuotes(name)));
+            if (cancelDate.isEmpty()) {
+                sql.append("NULL");
+            } else {
+                sql.append("'");
+                sql.append(cancelDate.substring(6)); // CANCEL_DT
+                sql.append("-");
+                sql.append(cancelDate.substring(3,5));
+                sql.append("-");
+                sql.append(cancelDate.substring(0,2));
+                sql.append("'");
+            }
             sql.append(",");
-            sql.append(getFirstChar(status));
+            if (renewDate.isEmpty()) {
+                sql.append("NULL");
+            } else {
+                sql.append("'");
+                sql.append(renewDate.substring(6)); // RENEW_DT
+                sql.append("-");
+                sql.append(renewDate.substring(3,5));
+                sql.append("-");
+                sql.append(renewDate.substring(0,2));
+                sql.append("'");
+            }
             sql.append(",");
-            sql.append(getDate(regDate));
+            if (stateNum.isEmpty()) {
+                sql.append("NULL");
+            } else {
+                sql.append("'");
+                sql.append(stateNum); // STATE_NUM
+                sql.append("'");
+            }
             sql.append(",");
-            sql.append(getDate(cancelDate));
+            if (state.isEmpty()) {
+                sql.append("NULL");
+            } else if (state.equals("NT")) {
+                sql.append("'O'");
+            } else {
+                sql.append("'");
+                sql.append(state.charAt(0)); // STATE
+                sql.append("'");
+            }
             sql.append(",");
-            sql.append(getDate(renewDate));
-            sql.append(",");
-            sql.append(getValue(stateNum));
-            sql.append(",");
-            sql.append(getFirstChar(state));
-            sql.append(",");
-            sql.append(getValue(abn));
-
+            if (abn.isEmpty()) {
+                sql.append("NULL");
+            } else {
+                sql.append("'");
+                sql.append(abn); // ABN
+                sql.append("'");
+            }
+            
             sql.append(")");
 
             statement = connection.createStatement();
@@ -153,7 +174,7 @@ public class CSVParser {
 
         try (BufferedReader br = new BufferedReader(new FileReader(FILENAME))) {
 
-            while (row < MAX && (line = br.readLine()) != null) {
+            while ((line = br.readLine()) != null) {
                 row++;
                 if (row == 0) {
                     continue; // skip the header row
