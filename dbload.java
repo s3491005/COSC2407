@@ -1,6 +1,7 @@
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.regex.*;
 
 public class dbload {
@@ -56,7 +57,7 @@ public class dbload {
 
         String line = "";
         int row = -1;
-        final int MAX = 3000000;
+        final int MAX = 5;
         String[] cols;
         String name;
         String status;
@@ -67,14 +68,16 @@ public class dbload {
         String state;
         String abn;
         
-        int nameCount = 0;
-        int statusCount = 0;
-        int regDateCount = 0;
-        int cancelDateCount = 0;
-        int renewDateCount = 0;
-        int stateNumCount = 0;
-        int stateCount = 0;
-        int abnCount = 0;
+        byte[] page = null;
+        byte[] record = null;
+        byte[] bStatus = null;
+        byte[] bRegDate = null;
+        byte[] bRenewDate = null;
+        int currentPageSize = 0;
+        int recordLength = 0;
+        int recordCount = 0;
+
+        Pattern slash = Pattern.compile("\\/");
 
         long startTime = System.currentTimeMillis();
 
@@ -97,36 +100,22 @@ public class dbload {
                 state      = (cols.length > 7) ? cols[7] : "";
                 abn        = (cols.length > 8) ? cols[8] : "";
 
-                
+                status = "" + status.charAt(0);
+                regDate = slash.matcher(regDate).replaceAll("");
+                renewDate = slash.matcher(renewDate).replaceAll("");
 
-                //insertBusinessName(row, name, status, regDate, cancelDate, renewDate, stateNum, state, abn);
-                if (!name.isEmpty()) {
-                    nameCount++;
-                }
-                if (!status.isEmpty()) {
-                    statusCount++;
-                }
-                if (!regDate.isEmpty()) {
-                    regDateCount++;
-                }
-                if (!cancelDate.isEmpty()) {
-                    cancelDateCount++;
-                }
-                if (!renewDate.isEmpty()) {
-                    renewDateCount++;
-                }
-                if (!stateNum.isEmpty()) {
-                    stateNumCount++;
-                }
-                if (!state.isEmpty()) {
-                    stateCount++;
-                }
-                if (!abn.isEmpty()) {
-                    abnCount++;
-                }
+                recordLength = 21 + name.length() + 1 + cancelDate.length() + 1  + stateNum.length() + 1  + state.length() + 1  + abn.length();
+                record = new byte[recordLength];
+                
+                //record = new byte[] { bStatus, bRegDate, bRenewDate };
+
+                System.out.println("recordLength: " + recordLength);
+               //System.out.println("record    : " + record.length);
+
+                System.out.println("==============================");
 
                 if (row % 10000 == 0) {
-                    System.out.print("\r" + row + " rows read ...");
+                    System.out.println("\r" + row + " rows read ...");
                 }
             }
 
@@ -136,24 +125,6 @@ public class dbload {
 
         System.out.print("\r" + row + " rows read      ");
 
-        System.out.println("name      : " + nameCount);
-        System.out.println("status    : " + statusCount);
-        System.out.println("regDate   : " + regDateCount);
-        System.out.println("cancelDate: " + cancelDateCount);
-        System.out.println("renewDate : " + renewDateCount);
-        System.out.println("stateNum  : " + stateNumCount);
-        System.out.println("state     : " + stateCount);
-        System.out.println("abn       : " + abnCount);
-        System.out.println("---------------------------------------------");
-        System.out.println("name      : " + (nameCount / row * 100) + "%");
-        System.out.println("status    : " + (statusCount / row * 100) + "%");
-        System.out.println("regDate   : " + (regDateCount / row * 100) + "%");
-        System.out.println("cancelDate: " + (cancelDateCount / row * 100) + "%");
-        System.out.println("renewDate : " + (renewDateCount / row * 100) + "%");
-        System.out.println("stateNum  : " + (stateNumCount / row * 100) + "%");
-        System.out.println("state     : " + (stateCount / row * 100) + "%");
-        System.out.println("abn       : " + (abnCount / row * 100) + "%");
-        
         long endTime = System.currentTimeMillis();
         long ms = endTime - startTime;
         System.out.println("Completed in: " + (ms/60000) + "m " + ((ms%60000)/1000) + "s " + (ms%1000) + "ms");
