@@ -11,7 +11,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.ResultSetMetaData;
 
-public class CSVParser {
+public class derbyLoader {
 
     private static final String FILENAME = "BUSINESS_NAMES_201803.csv";
     private static final String DELIMITER = "\t";
