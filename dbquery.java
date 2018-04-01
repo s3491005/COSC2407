@@ -1,11 +1,41 @@
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.regex.*;
 
 public class dbquery {
 
-    private static void getPage(byte[] page, int pagesize) {
-        byte[] bRecordLength = new byte[4];
+    private static final String FIELD_DELIMITER = "#";
+    private static int pagesize = 0;
+    private static int results = 0;
+    private static String filename = "";
+    private static String query = null;
+    private static Pattern regex = null;
+    
+    private static final int NUM_BYTES_FOR_INT = 4; // Number of bytes required for an integer
+    private static final int NUM_BYTES_FOR_CHAR = 1; // Number of bytes required for a char
+    private static final int NUM_BYTES_FOR_DATE = 8; // Number of bytes required for an String containing a Date in DDMMYYYY format
+    // Set length of the 4 fixed-length fields for every record: _ID, STATUS, REG_DT, RENEW_DT
+    private static final int LENGTH_OF_FIXED_FIELDS = NUM_BYTES_FOR_INT + NUM_BYTES_FOR_CHAR + (NUM_BYTES_FOR_DATE * 2);
+
+    private static final int MIN_PAGESIZE = 256;      // 2^8  - Smallest page size able to fit largest record (239 bytes)
+    private static final int MAX_PAGESIZE = 67108864; // 2^26 - Any bigger than this and we get "OutOfMemoryError: Java heap space"
+
+    /**
+     * Method called when the list of arguments is invalid
+     * Informs the User what the valid arguments are and terminates the program
+     */
+    private static void usage() {
+        System.err.println("Usage: java dbquery <text> <pagesize>");
+        System.err.println("       <text>     = Required: Search query to be used when searching the heap file.");
+        System.err.println("       <pagesize> = Required: Specify the page size of the heap file to be searched.");
+        System.err.println("                    Must be between " + MIN_PAGESIZE + " and " + MAX_PAGESIZE + " inclusive.");
+        System.exit(1);
+    }
+
+    private static void searchPage(byte[] page) {
+        byte[] bRecordLength = new byte[NUM_BYTES_FOR_INT];
         int recordLength = 0;
         int index = 0;
 
@@ -13,11 +43,11 @@ public class dbquery {
         byte[] bStatus;
         byte[] bRegDate;
         byte[] bRenewDate;
-        byte[] bVariableLengthFields;
+        byte[] bVLFields; // Variable-length fields
 
-        final String FIELD_DELIMITER = "#";
-        String variableLengthFields;
-        String[] variableLengthFieldsArr;
+        String vLFields;
+        String[] vLFieldsArr;
+        int lengthOfVariableFields = 0;
 
         int recordId;
         String name;
@@ -30,78 +60,116 @@ public class dbquery {
         String abn;
 
         while (index < pagesize) {
-            if ((pagesize - index) < 4) {
-                return;
+            if ((pagesize - index) < NUM_BYTES_FOR_INT) {
+                return; // Not enough space for another record
             }
-            System.arraycopy(page, index, bRecordLength, 0, 4);
-            index += 4; 
-            
-            recordLength = ByteBuffer.wrap(bRecordLength).getInt();
-            System.out.println("recordLength: " + recordLength);
-            if (recordLength == -1) {
-                return;
+
+            // Extract the Record length of the next Record
+            System.arraycopy(page, index, bRecordLength, 0, NUM_BYTES_FOR_INT); // Copy the next 4 bytes for the integer
+            index += NUM_BYTES_FOR_INT; 
+            recordLength = ByteBuffer.wrap(bRecordLength).getInt(); // Convert the byte[] to an int
+
+            if (recordLength < 1) {
+                return; // No more records on this page
             }
-            bRecordId = new byte[4];
-            bStatus = new byte[1];
-            bRegDate = new byte[8];
-            bRenewDate = new byte[8];
-            bVariableLengthFields = new byte[recordLength-21];
-
-            System.arraycopy(page, index, bRecordId, 0, 4);
-            index += 4; 
-            System.arraycopy(page, index, bStatus, 0, 1);
-            index += 1; 
-            System.arraycopy(page, index, bRegDate, 0, 8);
-            index += 8; 
-            System.arraycopy(page, index, bRenewDate, 0, 8);
-            index += 8; 
-            System.arraycopy(page, index, bVariableLengthFields, 0, bVariableLengthFields.length);
-            index += bVariableLengthFields.length; 
             
-            recordId = ByteBuffer.wrap(bRecordId).getInt();
-            status = new String(bStatus);
-            regDate = new String(bRegDate);
-            renewDate = new String(bRenewDate);
-            variableLengthFields = new String(bVariableLengthFields);
+            // Extract the NAME field from the record so we can check it for the query term
+            // Ignore the other field unless we need them
+            lengthOfVariableFields = recordLength - LENGTH_OF_FIXED_FIELDS;
+            bVLFields = new byte[lengthOfVariableFields];
+            System.arraycopy(page, index + LENGTH_OF_FIXED_FIELDS, bVLFields, 0, lengthOfVariableFields);
 
-            variableLengthFieldsArr = variableLengthFields.split(FIELD_DELIMITER);
+            vLFields    = new String(bVLFields); // Convert byte[] to Sstring
+            vLFieldsArr = vLFields.split(FIELD_DELIMITER); // Separate the variable-length fields by the delimiter
 
-            name       = variableLengthFieldsArr[0];
-            cancelDate = variableLengthFieldsArr[1];
-            stateNum   = variableLengthFieldsArr[2];
-            state      = variableLengthFieldsArr[3];
-            abn        = variableLengthFieldsArr[4];
+            name       = vLFieldsArr[0];
+            cancelDate = (vLFieldsArr.length > 1) ? vLFieldsArr[1] : "";
+            stateNum   = (vLFieldsArr.length > 2) ? vLFieldsArr[2] : "";
+            state      = (vLFieldsArr.length > 3) ? vLFieldsArr[3] : "";
+            abn        = (vLFieldsArr.length > 4) ? vLFieldsArr[4] : "";
             
-            System.out.println("======================================================");
-            System.out.println("recordId: " + recordId);
-            System.out.println("name: " + name);
-            System.out.println("status: " + status);
-            System.out.println("regDate: " + regDate);
-            System.out.println("cancelDate: " + cancelDate);
-            System.out.println("renewDate: " + renewDate);
-            System.out.println("stateNum: " + stateNum);
-            System.out.println("state: " + state);
-            System.out.println("abn: " + abn);
+            if (regex.matcher(name).matches()) {
+                // Found a match - retrieve the other fields
+                bRecordId = new byte[NUM_BYTES_FOR_INT];
+                bStatus = new byte[NUM_BYTES_FOR_CHAR];
+                bRegDate = new byte[NUM_BYTES_FOR_DATE];
+                bRenewDate = new byte[NUM_BYTES_FOR_DATE];
+                
+                System.arraycopy(page, index, bRecordId, 0, NUM_BYTES_FOR_INT);
+                index += NUM_BYTES_FOR_INT; 
+                System.arraycopy(page, index, bStatus, 0, NUM_BYTES_FOR_CHAR);
+                index += NUM_BYTES_FOR_CHAR; 
+                System.arraycopy(page, index, bRegDate, 0, NUM_BYTES_FOR_DATE);
+                index += NUM_BYTES_FOR_DATE; 
+                System.arraycopy(page, index, bRenewDate, 0, NUM_BYTES_FOR_DATE);
+                index += NUM_BYTES_FOR_DATE; 
+                index += lengthOfVariableFields; 
+
+                recordId = ByteBuffer.wrap(bRecordId).getInt();
+                status = new String(bStatus);
+                status = status == "R" ? "Registered" : "Deregistered";
+                regDate = new String(bRegDate);
+                regDate = regDate.substring(0,2) + "/" + regDate.substring(2,4) + "/" + regDate.substring(4);
+                renewDate = new String(bRenewDate);
+                renewDate = renewDate.substring(0,2) + "/" + renewDate.substring(2,4) + "/" + renewDate.substring(4);
+                if (!cancelDate.isEmpty()) {
+                    cancelDate = cancelDate.substring(0,2) + "/" + cancelDate.substring(2,4) + "/" + cancelDate.substring(4);
+                }
+                
+                System.out.println(recordId + ", " + name + ", " + status + ", " + regDate + ", " + cancelDate + ", " + renewDate + ", " + stateNum + ", " + state + ", " + abn);
+                results++;
+            } else {
+                index += recordLength;
+            }
         }
-
     }
 
     public static void main(String[] args) {
 
-        int pagesize = 2048;
+        if (args.length != 2) {
+            usage();
+        }
+
+        query = args[0];
+
+        if (!Pattern.compile("^\\d+$").matcher(args[1]).matches()) {
+            System.err.println("pagesize is not a valid integer");
+            usage();
+        }
+
+        pagesize = Integer.parseInt(args[1]);
+        if (pagesize < MIN_PAGESIZE || pagesize > MAX_PAGESIZE) {
+            usage();
+        }
+
+        filename = "heap." + pagesize;
+
+        // Check if a heap file of the page size exists
+        File file = new File(filename);
+        if (!file.exists() || !file.isFile()) {
+            System.err.println(filename + " is not a valid file");
+            System.exit(1);
+        }
+
+        regex = Pattern.compile(".*" + query + ".*", Pattern.CASE_INSENSITIVE);
+
+
         byte[] page = null;
-        Boolean hasNextPage = true;
-        int count = 0;
+        Boolean notEmpty = true;
+        int pageCount = 0;
+        long startTime = System.currentTimeMillis();
+        long endTime = 0;
 
-        try (FileInputStream stream = new FileInputStream("heap.2048")) {
+        try (FileInputStream stream = new FileInputStream(filename)) {
 
-            while (hasNextPage && count < 100) {
+            int fileSize = stream.available();
+            int pages = fileSize / pagesize;
+            
+            while (pageCount < pages) {
                 page = new byte[pagesize];
                 stream.read(page);
-                getPage(page, pagesize);
-                count++;
-
-                // 
+                searchPage(page);
+                pageCount++;
             }
 
             stream.close();
@@ -109,8 +177,9 @@ public class dbquery {
         } catch (IOException e) {
             System.err.println(e.getMessage());
         }
-
-        System.out.println("count: " + count);
-
+        System.out.println("results: " + results);
+        System.out.println("pageCount: " + pageCount);
+        endTime = System.currentTimeMillis();
+        System.out.println("Completed in " + (endTime - startTime) + " ms");
     }
 }

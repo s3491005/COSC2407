@@ -6,15 +6,28 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.regex.*;
 
+/**
+ * dbload Class Object
+ * Read a CSV file and create a heap file
+ * Page size for the heap file can be specified in an argument when the program is executed
+ * @author  Geoffrey Sage, s3491005
+ * @version 1.0
+ * @since   2018-04-01
+ */
 public class dbload {
 
-    private static int pagesize = 4096;
+    private static int pagesize = 4096; // Default values
+    private static String filename = null;
+    
     private static byte[] page = null;
     private static int currentPageSize = 0;
     private static int pageCount = 0;
-    private static String filename = "heap.4096";
-    private static final byte[] MINUS_ONE = ByteBuffer.allocate(4).putInt(-1).array();
-    private static final byte[] HASH = "#".getBytes();
+    
+    private static final int NUM_BYTES_FOR_INT = 4; // Number of bytes required for an integer
+    private static final byte[] MINUS_ONE = ByteBuffer.allocate(NUM_BYTES_FOR_INT).putInt(-1).array();
+    private static final byte HASH = (byte)'#';
+    private static final int MIN_PAGESIZE = 256;      // 2^8  - Smallest page size able to fit largest record (239 bytes)
+    private static final int MAX_PAGESIZE = 67108864; // 2^26 - Any bigger than this and we get "OutOfMemoryError: Java heap space"
 
     /**
      * Method called when the list of arguments is invalid
@@ -23,6 +36,7 @@ public class dbload {
     private static void usage() {
         System.err.println("Usage: java dbload [-p <pagesize>] <datafile>");
         System.err.println("       -p <pagesize> = Optional: Set the page size. Defaults to 4096.");
+        System.err.println("                       Must be between " + MIN_PAGESIZE + " and " + MAX_PAGESIZE + " inclusive.");
         System.err.println("       <sourcefile>  = Required: File to be loaded and stored as a heap file.");
         System.exit(1);
     }
@@ -41,31 +55,31 @@ public class dbload {
     }
 
     private static void writePage() {
-        System.out.println("writePage()");
-        System.out.println("currentPageSize: " + currentPageSize);
+        //System.out.println("writePage()");
+        //System.out.println("currentPageSize: " + currentPageSize);
         if (currentPageSize == 0) {
             return; 
         }
 
-        // add padding to fill the rest of the page
-        if ((currentPageSize + 4) <= pagesize) {
-            System.arraycopy(MINUS_ONE, 0, page, currentPageSize, MINUS_ONE.length);
-            currentPageSize += MINUS_ONE.length;
+        // If there is enough free space, set the next record length to 0
+        if ((currentPageSize + NUM_BYTES_FOR_INT) <= pagesize) {
+            System.arraycopy(MINUS_ONE, 0, page, currentPageSize, NUM_BYTES_FOR_INT);
+            currentPageSize += NUM_BYTES_FOR_INT;
         }
 
         // Fill the rest of the page with hashes
         for (int i = currentPageSize; i < page.length; i++) {
-            page[i] = HASH[0];
+            page[i] = HASH;
         }
 
-        // Delete any existing file of the same name
+        // If this it a new program execution, delete any existing file of the same name
         if (pageCount == 0) {
             File oldFile = new File(filename);
             oldFile.delete();
         }
         
+        // Append the page to the file
         try (FileOutputStream stream = new FileOutputStream(filename, true)) {
-            System.out.println("Writing to file " + filename + " ...");
             stream.write(page);
             stream.close();
 		} catch (IOException e) {
@@ -111,15 +125,14 @@ public class dbload {
             usage();
         }
 
-        filename = "heap." + pagesize;
+        if (pagesize < MIN_PAGESIZE || pagesize > MAX_PAGESIZE) {
+            usage();
+        }
 
-        //System.out.println("pagesize: " + pagesize);
-        //System.out.println("datafile: " + datafile);
-        //System.out.println("filename: " + filename);
+        filename = "heap." + pagesize;
 
         String line = "";
         int row = -1;
-        final int MAX = 5;
         String[] cols;
         String name;
         String status;
@@ -147,6 +160,7 @@ public class dbload {
         Pattern slash = Pattern.compile("\\/");
 
         long startTime = System.currentTimeMillis();
+        long endTime = 0;
 
         try (BufferedReader br = new BufferedReader(new FileReader(datafile))) {
 
@@ -188,9 +202,6 @@ public class dbload {
 
                 record = new byte[bRecordLength.length + recordLength];
 
-                System.out.println("== " + name + "(" + recordLength + ")");
-
-
                 // Copy all the bytes arrays to one byte array for the record
                 System.arraycopy(bRecordLength, 0, record, 0, bRecordLength.length);
                 i = bRecordLength.length;
@@ -207,7 +218,7 @@ public class dbload {
                 addRecord(record);
 
                 if (row % 10000 == 0) {
-                    System.out.println("\r" + row + " rows read ...");
+                    System.out.print("\r" + row + " records loaded ...");
                 }
             }
 
@@ -217,11 +228,11 @@ public class dbload {
 
         writePage();
 
-        System.out.print("\r" + row + " rows read      ");
-
-        long endTime = System.currentTimeMillis();
-        long ms = endTime - startTime;
-        System.out.println("Completed in: " + (ms/60000) + "m " + ((ms%60000)/1000) + "s " + (ms%1000) + "ms");
+        System.out.println("\r" + row + " records loaded      ");
+        System.out.println(pageCount + " pages created");
+       
+        endTime = System.currentTimeMillis();
+        System.out.println("Completed in " + (endTime - startTime) + " ms");
     }
 
 }
