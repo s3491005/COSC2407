@@ -1,3 +1,4 @@
+import java.io.File;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
@@ -20,15 +21,25 @@ import java.sql.ResultSetMetaData;
 public class derbyLoader {
 
     // Class Properties
-    private static final String FILENAME = "BUSINESS_NAMES_201803.csv";
     private static final String DELIMITER = "\t";
     private static final String BUSINESS_NAME_TABLE = "BUSINESS_NAME";
     private static final String DRIVER = "org.apache.derby.jdbc.EmbeddedDriver";
     private static final String DB_URL = "jdbc:derby:BusinessNameDb";
     
+    private static String filename = "";
     private static Connection connection = null;
     private static Statement statement = null;
     private static Pattern pattern = Pattern.compile("\\'");
+
+    /**
+     * Method called when the list of arguments is invalid
+     * Informs the User what the valid arguments are and terminates the program
+     */
+    private static void usage() {
+        System.err.println("Usage: java derbyLoader <sourcefile>");
+        System.err.println("       <sourcefile>  = Required: File to be loaded and stored in the derby database.");
+        System.exit(1);
+    }
 
     /**
      * Connect to the derby database
@@ -182,9 +193,24 @@ public class derbyLoader {
 
     /**
      * Main function for derbyLoader
-     * @param args[] None used
+     * @param args[] Path of source file
      */
     public static void main(String[] args) {
+
+        // Validate arguments
+        if (args.length != 1) {
+            usage();
+        }
+
+        filename = args[0];
+
+        // Check if the datafile exists
+        File file = new File(filename);
+        if (!file.exists() || !file.isFile()) {
+            System.err.println(filename + " is not a valid file");
+            System.exit(1);
+        }
+
 
         String line = "";
         int row = -1;
@@ -205,7 +231,7 @@ public class derbyLoader {
         long startTime = System.currentTimeMillis();
 
         // Read from the CSV file
-        try (BufferedReader br = new BufferedReader(new FileReader(FILENAME))) {
+        try (BufferedReader br = new BufferedReader(new FileReader(filename))) {
 
             // Iterate through each row in the file
             while ((line = br.readLine()) != null) {

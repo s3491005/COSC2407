@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.regex.*;
 
+import java.lang.StringIndexOutOfBoundsException;
+
 /**
  * dbquery Class Object
  * Search a heap file for a given query term
@@ -130,13 +132,13 @@ public class dbquery {
                 renewDate = new String(bRenewDate);
 
                 // Restore the repeated data that was truncated in dbload
-                status = status == "R" ? "Registered" : "Deregistered";
+                status = status.equals("R") ? "Registered" : "Deregistered";
                 regDate = regDate.substring(0,2) + "/" + regDate.substring(2,4) + "/" + regDate.substring(4);
                 renewDate = renewDate.substring(0,2) + "/" + renewDate.substring(2,4) + "/" + renewDate.substring(4);
-                if (!cancelDate.isEmpty()) {
+                if (cancelDate.length() == 8) {
                     cancelDate = cancelDate.substring(0,2) + "/" + cancelDate.substring(2,4) + "/" + cancelDate.substring(4);
                 }
-
+                
                 // Print the record
                 System.out.println(recordId + ", " + name + ", " + status + ", " + regDate + ", " + cancelDate + ", " + renewDate + ", " + stateNum + ", " + state + ", " + abn);
                 results++;
@@ -215,7 +217,7 @@ public class dbquery {
         
         // Output the results
         System.out.println("results: " + results);
-        System.out.println("pages searched: " + pageCount);
+        //System.out.println("pages searched: " + pageCount);
         System.out.println("Completed in " + (endTime - startTime) + " ms");
     }
 }

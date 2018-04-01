@@ -41,7 +41,7 @@ public class dbload {
         System.err.println("Usage: java dbload [-p <pagesize>] <datafile>");
         System.err.println("       -p <pagesize> = Optional: Set the page size. Defaults to 4096.");
         System.err.println("                       Must be between " + MIN_PAGESIZE + " and " + MAX_PAGESIZE + " inclusive.");
-        System.err.println("       <sourcefile>  = Required: File to be loaded and stored as a heap file.");
+        System.err.println("       <datafile>    = Required: File to be loaded and stored as a heap file.");
         System.exit(1);
     }
 
