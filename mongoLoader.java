@@ -1,14 +1,29 @@
+import com.mongodb.MongoClient;
+//import com.mongodb.MongoClientURI;
+//import com.mongodb.ServerAddress;
+
+import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.MongoCollection;
+
+import org.bson.Document;
+//import org.bson.conversions.Bson;
+//import java.util.Arrays;
+//import com.mongodb.Block;
+
+//import com.mongodb.client.MongoCursor;
+//import static com.mongodb.client.model.Filters.*;
+//import com.mongodb.client.result.DeleteResult;
+//import static com.mongodb.client.model.Updates.*;
+//import com.mongodb.client.result.UpdateResult;
+//import java.util.ArrayList;
+//import java.util.List;
+
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
-import java.util.*;
+//import java.util.*;
 import java.util.regex.*;
 
-import com.mongodb.MongoClient;
-import com.mongodb.MongoClientURI;
-import com.mongodb.ServerAddress;
-import com.mongodb.MongoCredential;
-import com.mongodb.MongoClientOptions;
 
 public class mongoLoader {
 
@@ -37,15 +52,8 @@ public class mongoLoader {
     }
 
     private static void deleteAllBusinessNames() {
-        try {
-            System.out.println("Deleting all documents from " + BN_COLLECTION + "...");
-            
-            System.out.println("All documents deleted from " + BN_COLLECTION);
-        }
-        catch (SQLException e) {
-            System.out.println(e.getMessage());
-            //e.printStackTrace();
-        }
+    	//collection.deleteMany(new Document());
+    	collection.drop();
     }
 
     private static String reformatDate(String date) {
