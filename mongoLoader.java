@@ -1,36 +1,28 @@
 import com.mongodb.MongoClient;
-//import com.mongodb.MongoClientURI;
-//import com.mongodb.ServerAddress;
-
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.MongoCollection;
-
 import org.bson.Document;
-//import org.bson.conversions.Bson;
-//import java.util.Arrays;
-//import com.mongodb.Block;
 
-//import com.mongodb.client.MongoCursor;
-//import static com.mongodb.client.model.Filters.*;
-//import com.mongodb.client.result.DeleteResult;
-//import static com.mongodb.client.model.Updates.*;
-//import com.mongodb.client.result.UpdateResult;
-//import java.util.ArrayList;
-//import java.util.List;
-
+import java.io.File;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
-//import java.util.*;
 import java.util.regex.*;
 
 /**
+ * mongoLoader Class Object
+ * Populate a CSV into the businessName collection of the local mongodb
+ * 
  * Compile: javac -cp mongodb-driver-3.4.3.jar:mongodb-driver-core-3.4.3.jar:bson-3.4.3.jar mongoLoader.java
  * Execute: java -cp .:mongodb-driver-3.4.3.jar:.:mongodb-driver-core-3.4.3.jar:.:bson-3.4.3.jar mongoLoader
+ * 
+ * @author  Geoffrey Sage, s3491005
+ * @version 4.0
+ * @since   2018-04-01
  */
 public class mongoLoader {
 
-    private static final String FILENAME = "BUSINESS_NAMES_201803.csv";
+    // Class properties
     private static final String DATABASE_NAME = "businessNames";
     private static final String BN_COLLECTION = "businessName";
     private static final String DELIMITER = "\t";
@@ -41,6 +33,22 @@ public class mongoLoader {
 
     private static Pattern pattern = Pattern.compile("\\\"");
 
+    private static String filename = "BUSINESS_NAMES_201803.csv";
+    
+    /**
+     * Method called when the list of arguments is invalid
+     * Informs the User what the valid arguments are and terminates the program
+     */
+    private static void usage() {
+        System.err.println("Usage: java -cp <classpath1[:classpath2]> mongoLoader <sourcefile>");
+        System.err.println("       -cp <classpaths> = Required: Class paths for the .jar files needed for the driver, separated with :");
+        System.err.println("       <sourcefile>     = Required: File to be loaded and stored in the derby database.");
+        System.exit(1);
+    }
+
+    /**
+     * Connect to the mongo database
+     */
     private static void connect() {
         try {
             mongoClient = new MongoClient();
@@ -49,24 +57,45 @@ public class mongoLoader {
             System.out.println("Connected to mongodb");
         } catch (Exception e) {
             System.out.println(e.getMessage());
-            e.printStackTrace();
             System.exit(1);
         }
     }
 
+    /**
+     * Delete all existing documents in the collection prior to repopulating it from the file
+     */
     private static void deleteAllBusinessNames() {
-    	//collection.deleteMany(new Document());
     	collection.drop();
     }
 
+    /**
+     * Reformat a date
+     * @param date A date with the format DD/MM/YYYY
+     * @return A date with the format YYYY-MM-DD
+     */
     private static String reformatDate(String date) {
         return date.substring(6) + "-" + date.substring(3,5) + "-" + date.substring(0,2);
     }
 
+    /**
+     * Insert a new document into the database
+     * Builds a Document to add to the collection
+     * @param id Record ID (row number)
+     * @param name BN_NAME
+     * @param status BN_STATUS
+     * @param regDate BN_REG_DT
+     * @param cancelDate BN_CANCEL_DT
+     * @param renewDate BN_RENEW_DT
+     * @param stateNum BN_SATE_NUMBER
+     * @param state BN_SATE_OF_REG
+     * @param abn BN_ABN
+     */
     public static void insertBusinessName(int id, String name, String status, String regDate, String cancelDate, String renewDate, String stateNum, String state, String abn) {
 
+        // Create a new Docuement
         Document doc = new Document("_id", id);
         
+        // Escape all double-quotes
         name = pattern.matcher(name).replaceAll("\\\""); // NAME
         doc.append("name", name);
 
@@ -100,14 +129,32 @@ public class mongoLoader {
             doc.append("abn", abn); // ABN
         }
 
+        // Insert the new Document into the Collection
         collection.insertOne(doc);
     }
 
+    /**
+     * Main function for derbyLoader
+     * @param args[] Path of source file
+     */
     public static void main(String[] args) {
+
+        // Validate arguments
+        if (args.length != 1) {
+            usage();
+        }
+
+        filename = args[0];
+
+        // Check if the datafile exists
+        File file = new File(filename);
+        if (!file.exists() || !file.isFile()) {
+            System.err.println(filename + " is not a valid file");
+            System.exit(1);
+        }
 
         String line = "";
         int row = -1;
-        final int MAX = 10000000;
         String[] cols;
         String name;
         String status;
@@ -118,20 +165,22 @@ public class mongoLoader {
         String state;
         String abn;
         
-        connect();
-        deleteAllBusinessNames();
+        connect(); // connect to MongoDB
+        deleteAllBusinessNames(); // Delete all exsiting records
 
         long startTime = System.currentTimeMillis();
 
-        try (BufferedReader br = new BufferedReader(new FileReader(FILENAME))) {
+        // Read from the CSV file
+        try (BufferedReader br = new BufferedReader(new FileReader(filename))) {
 
-            while (row < MAX && (line = br.readLine()) != null) {
+            // Iterate through each line
+            while ((line = br.readLine()) != null) {
                 row++;
                 if (row == 0) {
                     continue; // skip the header row
                 }
                 
-                cols = line.split(DELIMITER);
+                cols = line.split(DELIMITER); // drops empty columns at the end
                 
                 name       = cols[1];
                 status     = cols[2];
@@ -142,6 +191,7 @@ public class mongoLoader {
                 state      = (cols.length > 7) ? cols[7] : "";
                 abn        = (cols.length > 8) ? cols[8] : "";
 
+                // Create a Document and insert it into the Collection
                 insertBusinessName(row, name, status, regDate, cancelDate, renewDate, stateNum, state, abn);
 
                 if (row % 1000 == 0) {
@@ -150,11 +200,11 @@ public class mongoLoader {
             }
 
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.println(e.getMessage());
         }
 
+        // Output stats
         System.out.println("\nInserted " + row + " documents      ");
-
         long endTime = System.currentTimeMillis();
         long ms = endTime - startTime;
         System.out.println("Completed in: " + (ms/60000) + "m " + ((ms%60000)/1000) + "s " + (ms%1000) + "ms");
