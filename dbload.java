@@ -10,13 +10,15 @@ import java.util.regex.*;
  * dbload Class Object
  * Read a CSV file and create a heap file
  * Page size for the heap file can be specified in an argument when the program is executed
+ * 
  * @author  Geoffrey Sage, s3491005
  * @version 1.0
  * @since   2018-04-01
  */
 public class dbload {
 
-    private static int pagesize = 4096; // Default values
+    // Class properties
+    private static int pagesize = 4096; // Default value
     private static String filename = null;
     
     private static byte[] page = null;
@@ -24,8 +26,10 @@ public class dbload {
     private static int pageCount = 0;
     
     private static final int NUM_BYTES_FOR_INT = 4; // Number of bytes required for an integer
-    private static final byte[] MINUS_ONE = ByteBuffer.allocate(NUM_BYTES_FOR_INT).putInt(-1).array();
-    private static final byte HASH = (byte)'#';
+    private static final byte[] ZERO = ByteBuffer.allocate(NUM_BYTES_FOR_INT).putInt(0).array();
+    private static final byte HASH = (byte)'#'; // Used for padding the end of a page
+    private static final String FIELD_DELIMITER = "#";
+        
     private static final int MIN_PAGESIZE = 256;      // 2^8  - Smallest page size able to fit largest record (239 bytes)
     private static final int MAX_PAGESIZE = 67108864; // 2^26 - Any bigger than this and we get "OutOfMemoryError: Java heap space"
 
@@ -41,29 +45,34 @@ public class dbload {
         System.exit(1);
     }
 
+    /**
+     * Add a Record to the heap file
+     * @param record The Record to add (as a byte[])
+     */
     private static void addRecord(byte[] record) {
-        if (page == null) {
-            page = new byte[pagesize];
-            currentPageSize = 0;
-        }
+        // Check if there is enough space left in the current page for this record
         if ((currentPageSize + record.length) > pagesize) {
+            // Write the current page to the file and create a new page
             writePage();
         }
-        
+        // Copy this record to the current page
         System.arraycopy(record, 0, page, currentPageSize, record.length);
         currentPageSize += record.length;
     }
 
+    /**
+     * Write the current page in memory to the heap file
+     * Initialise a new page in memory
+     */
     private static void writePage() {
-        //System.out.println("writePage()");
-        //System.out.println("currentPageSize: " + currentPageSize);
+        // Make sure we aren't writing an empty page
         if (currentPageSize == 0) {
             return; 
         }
 
         // If there is enough free space, set the next record length to 0
         if ((currentPageSize + NUM_BYTES_FOR_INT) <= pagesize) {
-            System.arraycopy(MINUS_ONE, 0, page, currentPageSize, NUM_BYTES_FOR_INT);
+            System.arraycopy(ZERO, 0, page, currentPageSize, NUM_BYTES_FOR_INT);
             currentPageSize += NUM_BYTES_FOR_INT;
         }
 
@@ -72,13 +81,13 @@ public class dbload {
             page[i] = HASH;
         }
 
-        // If this it a new program execution, delete any existing file of the same name
+        // If this is a new program execution, delete any existing file of the same name
         if (pageCount == 0) {
             File oldFile = new File(filename);
             oldFile.delete();
         }
         
-        // Append the page to the file
+        // Append the page to the file (creates a new file if it doesn't exist)
         try (FileOutputStream stream = new FileOutputStream(filename, true)) {
             stream.write(page);
             stream.close();
@@ -87,19 +96,20 @@ public class dbload {
         }
 
         pageCount++;
-        page = new byte[pagesize];
+        page = new byte[pagesize]; // initialise a new page in memory
         currentPageSize = 0;
     }
 
     /**
-     * Main function for index
-     * @param args[] filename and option inputs
+     * Main function for dbload
+     * @param args[] pagesize and datafile
      */
     public static void main(String[] args) {
 
+        final String CSV_DELIMITER = "\t";
+        
         String datafile = null;
         int pagesizeIndex = -1;
-        final String CSV_DELIMITER = "\t";
         Pattern numRegex = Pattern.compile("^\\d+$");
         String arg = null;
 
@@ -113,7 +123,7 @@ public class dbload {
                 }
                 pagesize = Integer.parseInt(args[i]);
             } else if (arg.equals("-p")) {
-                // Print terms as they are encountered
+                // Next argument will be the pagesize
                 pagesizeIndex = i + 1;
             } else if (i == args.length - 1) {
                 // Should be the datafile
@@ -125,15 +135,25 @@ public class dbload {
             usage();
         }
 
+        // Check if the datafile exists
+        File file = new File(datafile);
+        if (!file.exists() || !file.isFile()) {
+            System.err.println(datafile + " is not a valid file");
+            System.exit(1);
+        }
+
+        // Check the pagesize limits
         if (pagesize < MIN_PAGESIZE || pagesize > MAX_PAGESIZE) {
             usage();
         }
 
         filename = "heap." + pagesize;
+        page = new byte[pagesize];
 
         String line = "";
         int row = -1;
         String[] cols;
+
         String name;
         String status;
         String regDate;
@@ -142,9 +162,8 @@ public class dbload {
         String stateNum;
         String state;
         String abn;
-        
-        final String FIELD_DELIMITER = "#";
         String variableLengthFields;
+
         byte[] bRecordId;
         byte[] bStatus;
         byte[] bRegDate;
@@ -152,6 +171,7 @@ public class dbload {
         byte[] bVariableLengthFields;
         byte[] bRecordLength;
         byte[] record;
+
         int currentPageSize = 0;
         int recordLength = 0;
         int recordCount = 0;
@@ -162,24 +182,26 @@ public class dbload {
         long startTime = System.currentTimeMillis();
         long endTime = 0;
 
+        // Read the CSV file
         try (BufferedReader br = new BufferedReader(new FileReader(datafile))) {
 
-            while (row < MAX && (line = br.readLine()) != null) {
+            // Iterate through each line in the file
+            while ((line = br.readLine()) != null) {
                 row++;
                 if (row == 0) {
                     continue; // skip the header row
                 }
                 
-                cols = line.split(CSV_DELIMITER);
+                cols = line.split(CSV_DELIMITER); // drops empty cols at the end of the line
                 
-                name       = cols[1];
-                status     = cols[2];
-                regDate    = cols[3];
-                cancelDate = cols[4];
-                renewDate  = cols[5];
-                stateNum   = (cols.length > 6) ? cols[6] : "";
-                state      = (cols.length > 7) ? cols[7] : "";
-                abn        = (cols.length > 8) ? cols[8] : "";
+                name       = cols[1]; // never null
+                status     = cols[2]; // never null
+                regDate    = cols[3]; // never null
+                cancelDate = cols[4]; // sometimes null
+                renewDate  = cols[5]; // never null
+                stateNum   = (cols.length > 6) ? cols[6] : ""; // sometimes null
+                state      = (cols.length > 7) ? cols[7] : ""; // sometimes null
+                abn        = (cols.length > 8) ? cols[8] : ""; // sometimes null
 
                 // Fixed-length fields
                 status     = "" + status.charAt(0);
@@ -191,14 +213,14 @@ public class dbload {
                 variableLengthFields = name + FIELD_DELIMITER + cancelDate + FIELD_DELIMITER + stateNum + FIELD_DELIMITER + state + FIELD_DELIMITER + abn;
                 
                 // Create Byte arrays
-                bRecordId  = ByteBuffer.allocate(4).putInt(row).array();
+                bRecordId  = ByteBuffer.allocate(NUM_BYTES_FOR_INT).putInt(row).array();
                 bStatus    = status.getBytes();
                 bRegDate   = regDate.getBytes();
                 bRenewDate = renewDate.getBytes();
                 bVariableLengthFields = variableLengthFields.getBytes();
 
                 recordLength = bRecordId.length + bStatus.length + bRegDate.length + bRenewDate.length + bVariableLengthFields.length;
-                bRecordLength = ByteBuffer.allocate(4).putInt(recordLength).array();
+                bRecordLength = ByteBuffer.allocate(NUM_BYTES_FOR_INT).putInt(recordLength).array();
 
                 record = new byte[bRecordLength.length + recordLength];
 
@@ -215,7 +237,7 @@ public class dbload {
                 i += bRenewDate.length;
                 System.arraycopy(bVariableLengthFields, 0, record, i, bVariableLengthFields.length);
 
-                addRecord(record);
+                addRecord(record); // Add this record to the heap file
 
                 if (row % 10000 == 0) {
                     System.out.print("\r" + row + " records loaded ...");
@@ -223,16 +245,17 @@ public class dbload {
             }
 
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.println(e.getMessage());
+            System.exit(1);
         }
 
+        // Write the last page
         writePage();
 
+        endTime = System.currentTimeMillis();
+        
         System.out.println("\r" + row + " records loaded      ");
         System.out.println(pageCount + " pages created");
-       
-        endTime = System.currentTimeMillis();
         System.out.println("Completed in " + (endTime - startTime) + " ms");
     }
-
 }

@@ -11,8 +11,15 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.ResultSetMetaData;
 
+/**
+ * derbyLoader Class Object
+ * @author  Geoffrey Sage, s3491005
+ * @version 1.0
+ * @since   2018-04-01
+ */
 public class derbyLoader {
 
+    // Class Properties
     private static final String FILENAME = "BUSINESS_NAMES_201803.csv";
     private static final String DELIMITER = "\t";
     private static final String BUSINESS_NAME_TABLE = "BUSINESS_NAME";
@@ -23,6 +30,9 @@ public class derbyLoader {
     private static Statement statement = null;
     private static Pattern pattern = Pattern.compile("\\'");
 
+    /**
+     * Connect to the derby database
+     */
     private static void connect() {
         try {
             Class.forName(DRIVER);
@@ -30,18 +40,19 @@ public class derbyLoader {
             System.out.println("Connected to " + DB_URL);
         } catch (Exception e) {
             System.out.println(e.getMessage());
-            e.printStackTrace();
             System.exit(1);
         }
     }
 
+    /**
+     * Close the connection to the derby database
+     */
     private static void disconnect() {
         try {
             if (statement != null) {
                 statement.close();
             }
             if (connection != null) {
-                //DriverManager.getConnection(DB_URL + ";shutdown=true");
                 connection.close();
             }           
         } catch (SQLException e) {
@@ -49,6 +60,9 @@ public class derbyLoader {
         }
     }
 
+    /**
+     * Delete all existing records in the database prior to repopulating it from the file
+     */
     private static void deleteAllBusinessNames() {
         try {
             System.out.println("Deleting all rows from " + BUSINESS_NAME_TABLE + "...");
@@ -63,9 +77,22 @@ public class derbyLoader {
         }
     }
 
+    /**
+     * Insert a new record into the database
+     * Builds a SQL statment to insert the record
+     * @param id Record ID (row number)
+     * @param name BN_NAME
+     * @param status BN_STATUS
+     * @param regDate BN_REG_DT
+     * @param cancelDate BN_CANCEL_DT
+     * @param renewDate BN_RENEW_DT
+     * @param stateNum BN_SATE_NUMBER
+     * @param state BN_SATE_OF_REG
+     * @param abn BN_ABN
+     */
     public static void insertBusinessName(int id, String name, String status, String regDate, String cancelDate, String renewDate, String stateNum, String state, String abn) {
+        // Build a SQL statement for the record insert
         StringBuilder sql = new StringBuilder(); 
-
         try {
             sql.append("INSERT INTO ");
             sql.append(BUSINESS_NAME_TABLE);
@@ -80,6 +107,7 @@ public class derbyLoader {
             if (regDate.isEmpty()) {
                 sql.append("NULL");
             } else {
+                // Convert the date format from DD/MM/YYYY to YYYY-MM-DD
                 sql.append("'");
                 sql.append(regDate.substring(6)); // REG_DT
                 sql.append("-");
@@ -92,6 +120,7 @@ public class derbyLoader {
             if (cancelDate.isEmpty()) {
                 sql.append("NULL");
             } else {
+                // Convert the date format from DD/MM/YYYY to YYYY-MM-DD
                 sql.append("'");
                 sql.append(cancelDate.substring(6)); // CANCEL_DT
                 sql.append("-");
@@ -104,6 +133,7 @@ public class derbyLoader {
             if (renewDate.isEmpty()) {
                 sql.append("NULL");
             } else {
+                // Convert the date format from DD/MM/YYYY to YYYY-MM-DD
                 sql.append("'");
                 sql.append(renewDate.substring(6)); // RENEW_DT
                 sql.append("-");
@@ -127,7 +157,7 @@ public class derbyLoader {
                 sql.append("'O'");
             } else {
                 sql.append("'");
-                sql.append(state.charAt(0)); // STATE
+                sql.append(state.charAt(0)); // STATE_OF_REG
                 sql.append("'");
             }
             sql.append(",");
@@ -138,8 +168,8 @@ public class derbyLoader {
                 sql.append(abn); // ABN
                 sql.append("'");
             }
-            
             sql.append(")");
+            // SQL Statement has been constructed
 
             statement = connection.createStatement();
             statement.execute(sql.toString());
@@ -147,11 +177,13 @@ public class derbyLoader {
         }
         catch (SQLException e) {
             System.out.println(e.getMessage());
-            System.out.println(sql.toString());
-            //e.printStackTrace();
         }
     }
 
+    /**
+     * Main function for derbyLoader
+     * @param args[] None used
+     */
     public static void main(String[] args) {
 
         String line = "";
@@ -172,25 +204,28 @@ public class derbyLoader {
 
         long startTime = System.currentTimeMillis();
 
+        // Read from the CSV file
         try (BufferedReader br = new BufferedReader(new FileReader(FILENAME))) {
 
+            // Iterate through each row in the file
             while ((line = br.readLine()) != null) {
                 row++;
                 if (row == 0) {
                     continue; // skip the header row
                 }
                 
-                cols = line.split(DELIMITER);
+                cols = line.split(DELIMITER); // drops empty columns at the end
                 
-                name       = cols[1];
-                status     = cols[2];
-                regDate    = cols[3];
-                cancelDate = cols[4];
-                renewDate  = cols[5];
-                stateNum   = (cols.length > 6) ? cols[6] : "";
-                state      = (cols.length > 7) ? cols[7] : "";
-                abn        = (cols.length > 8) ? cols[8] : "";
+                name       = cols[1]; // Never null
+                status     = cols[2]; // Never null
+                regDate    = cols[3]; // Never null
+                cancelDate = cols[4]; // Sometimes null
+                renewDate  = cols[5]; // Never null
+                stateNum   = (cols.length > 6) ? cols[6] : ""; // Sometimes null
+                state      = (cols.length > 7) ? cols[7] : ""; // Sometimes null
+                abn        = (cols.length > 8) ? cols[8] : ""; // Sometimes null
 
+                // Insert the row into the database
                 insertBusinessName(row, name, status, regDate, cancelDate, renewDate, stateNum, state, abn);
 
                 if (row % 1000 == 0) {
@@ -199,10 +234,10 @@ public class derbyLoader {
             }
 
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.println(e.getMessage());
         }
 
-        disconnect();
+        disconnect(); // Close the database connection
 
         System.out.println("\nInserted " + row + " rows      ");
 

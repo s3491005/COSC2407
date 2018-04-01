@@ -4,13 +4,22 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.regex.*;
 
+/**
+ * dbquery Class Object
+ * Search a heap file for a given query term
+ * 
+ * @author  Geoffrey Sage, s3491005
+ * @version 1.0
+ * @since   2018-04-01
+ */
 public class dbquery {
 
+    // Class Properties
     private static final String FIELD_DELIMITER = "#";
     private static int pagesize = 0;
     private static int results = 0;
     private static String filename = "";
-    private static String query = null;
+    private static String text = null;
     private static Pattern regex = null;
     
     private static final int NUM_BYTES_FOR_INT = 4; // Number of bytes required for an integer
@@ -34,7 +43,12 @@ public class dbquery {
         System.exit(1);
     }
 
+    /**
+     * Search all records in a page for the text
+     * @param page The page to be searched
+     */
     private static void searchPage(byte[] page) {
+
         byte[] bRecordLength = new byte[NUM_BYTES_FOR_INT];
         int recordLength = 0;
         int index = 0;
@@ -59,6 +73,7 @@ public class dbquery {
         String state;
         String abn;
 
+        // Iterate through each byte in the page
         while (index < pagesize) {
             if ((pagesize - index) < NUM_BYTES_FOR_INT) {
                 return; // Not enough space for another record
@@ -73,7 +88,7 @@ public class dbquery {
                 return; // No more records on this page
             }
             
-            // Extract the NAME field from the record so we can check it for the query term
+            // Extract the NAME field from the record so we can check it for the text
             // Ignore the other field unless we need them
             lengthOfVariableFields = recordLength - LENGTH_OF_FIXED_FIELDS;
             bVLFields = new byte[lengthOfVariableFields];
@@ -82,14 +97,17 @@ public class dbquery {
             vLFields    = new String(bVLFields); // Convert byte[] to Sstring
             vLFieldsArr = vLFields.split(FIELD_DELIMITER); // Separate the variable-length fields by the delimiter
 
-            name       = vLFieldsArr[0];
-            cancelDate = (vLFieldsArr.length > 1) ? vLFieldsArr[1] : "";
-            stateNum   = (vLFieldsArr.length > 2) ? vLFieldsArr[2] : "";
-            state      = (vLFieldsArr.length > 3) ? vLFieldsArr[3] : "";
-            abn        = (vLFieldsArr.length > 4) ? vLFieldsArr[4] : "";
+            name = vLFieldsArr[0];
             
             if (regex.matcher(name).matches()) {
+
                 // Found a match - retrieve the other fields
+                cancelDate = (vLFieldsArr.length > 1) ? vLFieldsArr[1] : "";
+                stateNum   = (vLFieldsArr.length > 2) ? vLFieldsArr[2] : "";
+                state      = (vLFieldsArr.length > 3) ? vLFieldsArr[3] : "";
+                abn        = (vLFieldsArr.length > 4) ? vLFieldsArr[4] : "";
+
+                // Get the bytes for the fixed-length fields
                 bRecordId = new byte[NUM_BYTES_FOR_INT];
                 bStatus = new byte[NUM_BYTES_FOR_CHAR];
                 bRegDate = new byte[NUM_BYTES_FOR_DATE];
@@ -105,38 +123,50 @@ public class dbquery {
                 index += NUM_BYTES_FOR_DATE; 
                 index += lengthOfVariableFields; 
 
+                // Convert the byte arrays to ints or Strings
                 recordId = ByteBuffer.wrap(bRecordId).getInt();
                 status = new String(bStatus);
-                status = status == "R" ? "Registered" : "Deregistered";
                 regDate = new String(bRegDate);
-                regDate = regDate.substring(0,2) + "/" + regDate.substring(2,4) + "/" + regDate.substring(4);
                 renewDate = new String(bRenewDate);
+
+                // Restore the repeated data that was truncated in dbload
+                status = status == "R" ? "Registered" : "Deregistered";
+                regDate = regDate.substring(0,2) + "/" + regDate.substring(2,4) + "/" + regDate.substring(4);
                 renewDate = renewDate.substring(0,2) + "/" + renewDate.substring(2,4) + "/" + renewDate.substring(4);
                 if (!cancelDate.isEmpty()) {
                     cancelDate = cancelDate.substring(0,2) + "/" + cancelDate.substring(2,4) + "/" + cancelDate.substring(4);
                 }
-                
+
+                // Print the record
                 System.out.println(recordId + ", " + name + ", " + status + ", " + regDate + ", " + cancelDate + ", " + renewDate + ", " + stateNum + ", " + state + ", " + abn);
                 results++;
             } else {
+                // Not a match, skip over this record
                 index += recordLength;
             }
         }
     }
 
+    /**
+     * Main function for dbquery
+     * @param args[] text (query term) and pagesize
+     */
     public static void main(String[] args) {
 
+        // Validate the arguments
         if (args.length != 2) {
             usage();
         }
 
-        query = args[0];
+        text = args[0];
 
+        // Make sure the pagesize looks like a number
         if (!Pattern.compile("^\\d+$").matcher(args[1]).matches()) {
             System.err.println("pagesize is not a valid integer");
             usage();
         }
 
+        // Check the pagesize limits
         pagesize = Integer.parseInt(args[1]);
         if (pagesize < MIN_PAGESIZE || pagesize > MAX_PAGESIZE) {
             usage();
@@ -144,28 +174,31 @@ public class dbquery {
 
         filename = "heap." + pagesize;
 
-        // Check if a heap file of the page size exists
+        // Check if a heap file for the given pagesize exists
         File file = new File(filename);
         if (!file.exists() || !file.isFile()) {
             System.err.println(filename + " is not a valid file");
             System.exit(1);
         }
 
-        regex = Pattern.compile(".*" + query + ".*", Pattern.CASE_INSENSITIVE);
-
+        // Regular expression used to seach records for the text
+        regex = Pattern.compile(".*" + text + ".*", Pattern.CASE_INSENSITIVE);
 
         byte[] page = null;
         Boolean notEmpty = true;
         int pageCount = 0;
+
         long startTime = System.currentTimeMillis();
         long endTime = 0;
 
+        // Read from the heap file
         try (FileInputStream stream = new FileInputStream(filename)) {
 
-            int fileSize = stream.available();
-            int pages = fileSize / pagesize;
+            int fileSize = stream.available(); // size of the heap file
+            int numPages = fileSize / pagesize; // number of pages in the heap file
             
-            while (pageCount < pages) {
+            // Read in a page at a time and seach it for the text
+            while (pageCount < numPages) {
                 page = new byte[pagesize];
                 stream.read(page);
                 searchPage(page);
@@ -177,9 +210,12 @@ public class dbquery {
         } catch (IOException e) {
             System.err.println(e.getMessage());
         }
-        System.out.println("results: " + results);
-        System.out.println("pageCount: " + pageCount);
+
         endTime = System.currentTimeMillis();
+        
+        // Output the results
+        System.out.println("results: " + results);
+        System.out.println("pages searched: " + pageCount);
         System.out.println("Completed in " + (endTime - startTime) + " ms");
     }
 }
