@@ -24,7 +24,10 @@ import java.io.IOException;
 //import java.util.*;
 import java.util.regex.*;
 
-
+/**
+ * Compile: javac -cp mongodb-driver-3.4.3.jar:mongodb-driver-core-3.4.3.jar:bson-3.4.3.jar mongoLoader.java
+ * Execute: java -cp .:mongodb-driver-3.4.3.jar:.:mongodb-driver-core-3.4.3.jar:.:bson-3.4.3.jar mongoLoader
+ */
 public class mongoLoader {
 
     private static final String FILENAME = "BUSINESS_NAMES_201803.csv";
@@ -104,7 +107,7 @@ public class mongoLoader {
 
         String line = "";
         int row = -1;
-        final int MAX = 100;
+        final int MAX = 10000000;
         String[] cols;
         String name;
         String status;
