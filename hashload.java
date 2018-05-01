@@ -14,32 +14,38 @@ import java.lang.StringIndexOutOfBoundsException;
  * @version 1.0
  * @since   2018-05-01
  */
-public class dbindexer {
+public class hashload {
 
     // Class Properties
-    private static final String FIELD_DELIMITER = "#";
     private static int pagesize = 0;
     private static String filename = "";
 
-    private static Pattern hyphens = Pattern.compile("\\-");
-    private static Pattern specialChars = Pattern.compile("[^a-z0-9\\s]");
-    private static Pattern extraSpaces = Pattern.compile("\\s\\s+");
-    
+    private static final String FIELD_DELIMITER = "#";
     private static final int NUM_BYTES_FOR_INT = 4; // Number of bytes required for an integer
     private static final int NUM_BYTES_FOR_CHAR = 1; // Number of bytes required for a char
     private static final int NUM_BYTES_FOR_DATE = 8; // Number of bytes required for an String containing a Date in DDMMYYYY format
     // Set length of the 4 fixed-length fields for every record: _ID, STATUS, REG_DT, RENEW_DT
     private static final int LENGTH_OF_FIXED_FIELDS = NUM_BYTES_FOR_INT + NUM_BYTES_FOR_CHAR + (NUM_BYTES_FOR_DATE * 2);
 
-    private static final int MIN_PAGESIZE = 256;      // 2^8  - Smallest page size able to fit largest record (239 bytes)
+    private static final int NUM_BYTES_FOR_INDEX_KEY = 200; // Number of bytes required for a Name
+    private static final int LENGTH_OF_INDEX = NUM_BYTES_FOR_INDEX_KEY + (NUM_BYTES_FOR_INT * 2); // Name, page number, page offset
+    
+    private static final int MIN_PAGESIZE = 256;      // 2^8  - Smallest page size able to fit the index key and file offset size (208 bytes)
     private static final int MAX_PAGESIZE = 67108864; // 2^26 - Any bigger than this and we get "OutOfMemoryError: Java heap space"
 
+    private static final int ROW_COUNT = 2523932; // Number of rows in the database
+    private static final double LOAD_FACTOR = 0.7;
+    private static final int INDEX_CAPACITY = (int) Math.floor(ROW_COUNT / LOAD_FACTOR);
+    private static int numBuckets = 0;
+    private static int bucketCapacity = 0;
+
+    
     /**
      * Method called when the list of arguments is invalid
      * Informs the User what the valid arguments are and terminates the program
      */
     private static void usage() {
-        System.err.println("Usage: java indexer <pagesize>");
+        System.err.println("Usage: java hashload <pagesize>");
         System.err.println("       <pagesize> = Required: Specify the page size of the heap file to be searched.");
         System.err.println("                    Must be between " + MIN_PAGESIZE + " and " + MAX_PAGESIZE + " inclusive.");
         System.exit(1);
@@ -67,9 +73,7 @@ public class dbindexer {
 
         int recordId;
         String name;
-        String[] terms;
-        String term;
-        int i;
+        int hashcode;
 
         // Iterate through each byte in the page
         while (index < pagesize) {
@@ -99,16 +103,9 @@ public class dbindexer {
             
             // sanitise the name
             name = name.trim().toLowerCase(); // trim and convert to lower case
-            name = hyphens.matcher(name).replaceAll(" "); // Separate hyphenated words
-            name = specialChars.matcher(name).replaceAll(""); // Remove all remaining special characters
-            name = extraSpaces.matcher(name).replaceAll(" "); // Remove sequential spaces
+            hashcode = name.hashCode();
 
-            terms = name.split(" ");
 
-            for (i = 0; i < terms.length; i++) {
-                term = terms[i];
-                
-            }
         }
     }
 
@@ -124,7 +121,7 @@ public class dbindexer {
         }
 
         // Make sure the pagesize looks like a number
-        if (!Pattern.compile("^\\d+$").matcher(args[1]).matches()) {
+        if (!Pattern.compile("^\\d+$").matcher(args[0]).matches()) {
             System.err.println("pagesize is not a valid integer");
             usage();
         }
@@ -143,6 +140,13 @@ public class dbindexer {
             System.err.println(filename + " is not a valid file");
             System.exit(1);
         }
+
+        bucketCapacity = (int) Math.floor(pagesize / LENGTH_OF_INDEX);
+        numBuckets = (int) Math.ceil(INDEX_CAPACITY / bucketCapacity);
+        System.out.println("LENGTH_OF_INDEX: " + LENGTH_OF_INDEX);
+        System.out.println("bucketCapacity: " + bucketCapacity);
+        System.out.println("numBuckets: " + numBuckets);
+        System.exit(1);
 
         byte[] page = null;
         Boolean notEmpty = true;
