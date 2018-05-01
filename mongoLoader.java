@@ -204,7 +204,7 @@ public class mongoLoader {
         }
 
         // Output stats
-        System.out.println("\nInserted " + row + " documents      ");
+        System.out.println("\r" + row + " documents inserted    ");
         long endTime = System.currentTimeMillis();
         long ms = endTime - startTime;
         System.out.println("Completed in: " + (ms/60000) + "m " + ((ms%60000)/1000) + "s " + (ms%1000) + "ms");
